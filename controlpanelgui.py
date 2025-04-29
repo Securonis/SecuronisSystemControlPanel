@@ -78,10 +78,8 @@ class LinuxSystemPanel:
             ("Disk Info", 4),
             ("Processes", 5),
             ("Services", 6),
-            ("System Logs", 7),
-            ("Power Info", 8),
-            ("System Monitor", 9),
-            ("About", 10)
+            ("Power Info", 7),
+            ("About", 8)
         ]
 
         
@@ -406,9 +404,7 @@ class LinuxSystemPanel:
                 self.show_disk_info,
                 self.show_processes,
                 self.show_services,
-                self.show_system_logs,
                 self.show_power_info,
-                self.show_system_monitor,
                 self.show_about
             ]
             
@@ -420,41 +416,44 @@ class LinuxSystemPanel:
             messagebox.showerror("Error", f"Failed to switch tab: {str(e)}")
 
     def show_about(self):
-        """Show About tab"""
+        """Show About tab with application information."""
+        # Clear the main area
+        for widget in self.main_area.winfo_children():
+            widget.destroy()
+
+        # Create a new content frame
         content = tk.Frame(self.main_area, bg="#000000")
         content.pack(fill="both", expand=True, padx=25, pady=25)
-        
-        tk.Label(content, 
-                text="ABOUT THIS PANEL", 
-                font=self.title_font,
-                bg="#000000",
-                fg="#00ff00").pack(anchor="w", pady=(0, 20))
-        
-        about_text = """
-        Securonis Linux System Control Panel 
-        
-        Features:
-        - Real-time system monitoring
-        - Privacy status checking
-        - Network information display
-        - Disk usage visualization
-        - Process management
-        - System monitoring graphs
-        - Service management
-        - System logs viewer
-        - Power information
-        - Hardware details 
 
-        Developer: root0emir
-        Contact: root0emir@protonmail.com
-        
-        """.format(psutil_version=psutil.__version__)
-        
+        # Add title
         tk.Label(content, 
-                text=about_text, 
-                bg="#000000",
-                fg="#00ff00",
-                justify="left").pack(anchor="w")
+                 text="ABOUT THIS PANEL", 
+                 font=self.title_font,
+                 bg="#000000",
+                 fg="#00ff00").pack(anchor="w", pady=(0, 20))
+
+        # Add information
+        about_text = (
+            "Secuonis Linux System Control Panel\n\n"
+            "Version: 1.4\n"
+            "Developer: root0emir\n\n"
+            "This control panel provides detailed system information, "
+            "hardware monitoring, privacy and security status, and more.\n\n"
+            "Features:\n"
+            "- System and hardware information\n"
+            "- Privacy and security checks\n"
+            "- Network and disk monitoring\n"
+            "- Process and service management\n"
+            "- Power and system logs\n\n"
+        )
+
+        tk.Label(content, 
+                 text=about_text, 
+                 font=self.normal_font,
+                 bg="#000000",
+                 fg="#00ff00",
+                 justify="left",
+                 anchor="w").pack(anchor="w", pady=(10, 0))
 
     def get_system_info(self):
         mem = psutil.virtual_memory()
@@ -873,9 +872,26 @@ class LinuxSystemPanel:
 
     def check_tor(self):
         try:
+ 
             tor_status = subprocess.check_output(['systemctl', 'is-active', 'tor'], stderr=subprocess.PIPE, timeout=1).decode()
             if "active" in tor_status:
-                return "Active"
+               
+                try:
+                    import requests
+                    session = requests.session()
+                    session.proxies = {
+                        'http': 'socks5h://127.0.0.1:9050',
+                        'https': 'socks5h://127.0.0.1:9050'
+                    }
+                    response = session.get('https://check.torproject.org/api/ip', timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get('IsTor', False):
+                            return "Active (Verified)"
+                        else:
+                            return "Active (Not Verified)"
+                except:
+                    return "Active (Connection Failed)"
             return "Inactive"
         except:
             return "Not Found"
@@ -1574,4 +1590,4 @@ class LinuxSystemPanel:
 if __name__ == "__main__":
     root = tk.Tk()
     app = LinuxSystemPanel(root)
-    root.mainloop() 
+    root.mainloop()
