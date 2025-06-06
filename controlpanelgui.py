@@ -79,7 +79,8 @@ class LinuxSystemPanel:
             ("Processes", 5),
             ("Services", 6),
             ("Power Info", 7),
-            ("About", 8)
+            ("Securonis", 8),
+            ("About", 9)
         ]
 
         
@@ -396,21 +397,28 @@ class LinuxSystemPanel:
             for widget in self.main_area.winfo_children():
                 widget.destroy()
             
-            tabs = [
-                self.show_system_info,
-                self.show_hardware_info,
-                self.show_privacy_status,
-                self.show_network_info,
-                self.show_disk_info,
-                self.show_processes,
-                self.show_services,
-                self.show_power_info,
-                self.show_about
-            ]
-            
-            if index < len(tabs):
-                tabs[index]()
-                print(f"Switched to tab: {self.menu_items[index][0]}")
+            if index == 0:
+                self.show_system_info()
+            elif index == 1:
+                self.show_hardware_info()
+            elif index == 2:
+                self.show_privacy_status()
+            elif index == 3:
+                self.show_network_info()
+            elif index == 4:
+                self.show_disk_info()
+            elif index == 5:
+                self.show_system_monitor()
+            elif index == 6:
+                self.show_services()
+            elif index == 7:
+                self.show_power_info()
+            elif index == 8:
+                self.show_securonis_info()
+            elif index == 9:
+                self.show_about()
+            else:
+                self.show_system_info()
         except Exception as e:
             print(f"Error switching tab: {e}")
             messagebox.showerror("Error", f"Failed to switch tab: {str(e)}")
@@ -435,7 +443,7 @@ class LinuxSystemPanel:
         # Add information
         about_text = (
             "Secuonis Linux System Control Panel\n\n"
-            "Version: 1.4\n"
+            "Version: 1.5\n"
             "Developer: root0emir\n\n"
             "This control panel provides detailed system information, "
             "hardware monitoring, privacy and security status, and more.\n\n"
@@ -780,30 +788,19 @@ class LinuxSystemPanel:
                     return
                     
                 security_info = {
-                    # sec
-                    "Firewall Status": self.check_firewall(),
-                    "VPN Status": self.check_vpn(),
-                    "Tor Status": self.check_tor(),
-                    "DNS Status": self.check_dns(),
-                    "Public IP": self.get_public_ip(),
-                    "System Updates": self.check_updates(),
-                    "Antivirus": self.check_antivirus(),
-                    
-                    # System Sec  
-                    "SELinux": self.check_selinux(),
-                    "AppArmor": self.check_apparmor(),
-                    "System Encryption": self.check_encryption(),
-                    "Secure Boot": self.check_secure_boot(),
-                    
-                    # Network Security
-                    "SSH Status": self.check_ssh_status(),
-                    "Open Ports": self.check_open_ports(),
-                    "Network Encryption": self.check_network_encryption(),
-                    "DNS-over-TLS": self.check_dns_over_tls(),
-                    
-                    # Proxy status
-                    "Proxy Status": self.get_proxy_status()
-                }
+                # sec
+                "Firewall Status": self.check_firewall(),
+                "VPN Status": self.check_vpn(),
+                "Tor Status": self.check_tor(),
+                "DNS Status": self.check_dns(),
+                "Public IP": self.get_public_ip(),
+                
+                # System Sec  
+                "AppArmor": self.check_apparmor(),
+                "Dnscrypt-Proxy": self.check_dnscrypt(),
+                "Dnscrypt-Proxy Service": self.check_dnscrypt_proxy(),
+                "I2P Status": self.check_i2p()
+            }
                 
                 if loading_label.winfo_exists():
                     loading_label.destroy()
@@ -903,9 +900,27 @@ class LinuxSystemPanel:
             
             dns_providers = {
                 '1.1.1.1': 'Cloudflare',
+                '1.0.0.1': 'Cloudflare',
                 '8.8.8.8': 'Google',
+                '8.8.4.4': 'Google',
                 '9.9.9.9': 'Quad9',
-                '208.67.222.222': 'OpenDNS'
+                '149.112.112.112': 'Quad9',
+                '208.67.222.222': 'OpenDNS',
+                '208.67.220.220': 'OpenDNS',
+                '94.140.14.14': 'AdGuard',
+                '94.140.15.15': 'AdGuard',
+                '77.88.8.8': 'Yandex.DNS',
+                '77.88.8.1': 'Yandex.DNS',
+                '76.76.19.19': 'Alternate DNS',
+                '76.223.122.150': 'Alternate DNS',
+                '185.228.168.9': 'CleanBrowsing',
+                '185.228.169.9': 'CleanBrowsing',
+                '64.6.64.6': 'Verisign',
+                '64.6.65.6': 'Verisign',
+                '156.154.70.1': 'Neustar',
+                '156.154.71.1': 'Neustar',
+                '8.26.56.26': 'Comodo Secure',
+                '8.20.247.20': 'Comodo Secure'
             }
             
             for ip, provider in dns_providers.items():
@@ -953,7 +968,7 @@ class LinuxSystemPanel:
                 "Network Interfaces": ["Interfaces", "Active Interface", "Interface Speed", "MTU Size"],
                 "Traffic Statistics": ["Download", "Upload", "Packets", "Errors", "Drops"],
                 "Network Services": ["DNS Servers", "Default Gateway", "DHCP Status", "Proxy Status"],
-                "Network Security": ["Firewall Rules", "Open Ports", "Network Encryption", "VPN Status"]
+                "Network Security": ["Firewall Rules", "Network Encryption", "VPN Status"]
             }
             
             row = 0
@@ -1024,7 +1039,6 @@ class LinuxSystemPanel:
                 
         
                 "Firewall Rules": self.get_firewall_rules(),
-                "Open Ports": self.get_open_ports(),
                 "Network Encryption": self.get_network_encryption_status(),
                 "VPN Status": self.get_vpn_status()
             }
@@ -1109,14 +1123,6 @@ class LinuxSystemPanel:
         try:
             rules = subprocess.check_output(['iptables', '-L', '--line-numbers'], stderr=subprocess.PIPE, timeout=1).decode()
             return f"{len(rules.splitlines())} rules"
-        except:
-            return "N/A"
-
-    def get_open_ports(self):
-        try:
-            netstat = subprocess.check_output(['netstat', '-tuln'], stderr=subprocess.PIPE, timeout=1).decode()
-            ports = re.findall(r':(\d+)', netstat)
-            return f"{len(ports)} ports open"
         except:
             return "N/A"
 
@@ -1304,24 +1310,13 @@ class LinuxSystemPanel:
         except:
             return "Not Found"
 
-    def check_open_ports(self):
-        try:
-            # check for open ports
-            netstat = subprocess.check_output(['netstat', '-tuln'], stderr=subprocess.PIPE, timeout=1).decode()
-            ports = re.findall(r':(\d+)', netstat)
-            if ports:
-                return f"{len(ports)} ports open"
-            return "No open ports"
-        except:
-            return "Not Found"
-
     def check_network_encryption(self):
         try:
             # SSL/TLS checking
             ssl_status = subprocess.check_output(['openssl', 'version'], stderr=subprocess.PIPE, timeout=1).decode()
             if ssl_status:
                 return "Enabled"
-            return "Not Found"
+            return "Disabled"
         except:
             return "Not Found"
 
@@ -1364,10 +1359,12 @@ class LinuxSystemPanel:
 
     def check_apparmor(self):
         try:
-            apparmor_status = subprocess.check_output(['aa-status'], stderr=subprocess.PIPE, timeout=1).decode()
-            if "apparmor module is loaded" in apparmor_status:
+            apparmor_status = subprocess.check_output(['systemctl', 'status', 'apparmor'], stderr=subprocess.PIPE, timeout=1).decode()
+            if "active (exited)" in apparmor_status or "active (running)" in apparmor_status:
                 return "Active"
-            return "Inactive"
+            elif "inactive" in apparmor_status or "failed" in apparmor_status:
+                return "Inactive"
+            return "Unknown"
         except:
             return "Not Found"
 
@@ -1380,6 +1377,52 @@ class LinuxSystemPanel:
             return "Not Found"
         except:
             return "Not Found"
+
+    def check_dnscrypt(self):
+        try:
+            # First change directory to /etc/dnscrypt-proxy
+            # Then try to resolve a domain using dnscrypt-proxy
+            commands = [
+                'cd /etc/dnscrypt-proxy',
+                'dnscrypt-proxy -resolve example.com'
+            ]
+            result = subprocess.run(
+                ' && '.join(commands),
+                shell=True,
+                capture_output=True,
+                timeout=3
+            )
+            if result.returncode == 0:
+                return "Active"
+            return "Inactive"
+        except FileNotFoundError:
+            return "Not Found"
+        except Exception:
+            return "Error"
+
+    def check_dnscrypt_proxy(self):
+        try:
+            service_status = subprocess.check_output(['systemctl', 'status', 'dnscrypt-proxy'], stderr=subprocess.PIPE, timeout=1).decode()
+            if "active (running)" in service_status:
+                return "Active"
+            elif "inactive" in service_status:
+                return "Inactive"
+            return "Unknown"
+        except:
+            return "Not Found"
+
+    def check_i2p(self):
+        try:
+            i2p_status = subprocess.check_output(['i2prouter', 'status'], stderr=subprocess.PIPE, timeout=2).decode()
+            if "running" in i2p_status.lower():
+                return "Active"
+            elif "not running" in i2p_status.lower():
+                return "Inactive"
+            return "Unknown"
+        except FileNotFoundError:
+            return "Not Found"
+        except Exception:
+            return "Error"
 
     def check_secure_boot(self):
         try:
@@ -1400,30 +1443,94 @@ class LinuxSystemPanel:
                 bg="#000000",
                 fg="#00ff00").pack(anchor="w", pady=(0, 20))
         
-        # get disk info
-        disks = self.get_disk_info()
+        # Frame to hold disk frames
+        disks_frame = tk.Frame(content, bg="#000000")
+        disks_frame.pack(fill="both", expand=True)
         
-        for disk in disks:
-            frame = tk.Frame(content, bg="#000000")
-            frame.pack(fill="x", pady=10)
-            
-            tk.Label(frame, 
-                    text=f"{disk['Mount']}:", 
-                    bg="#000000", 
-                    fg="#00ff00",
-                    font=self.bold_font, 
-                    width=20, 
-                    anchor="w").pack(side="left")
-            
-            canvas = tk.Canvas(frame, height=20, bg="#121212", highlightthickness=0)
-            canvas.pack(side="left", fill="x", expand=True, padx=10)
-            percent = float(disk['Used'].replace('%', ''))
-            canvas.create_rectangle(0, 0, percent*2, 20, fill="#006400", outline="")
-            
-            tk.Label(frame, 
-                    text=f"{disk['Used']} of {disk['Size']} (Free: {disk['Free']})", 
-                    bg="#000000",
-                    fg="#00ff00").pack(side="left", padx=10)
+        loading_label = tk.Label(content, text="Loading disk information...", bg="#000000", fg="#00ff00")
+        loading_label.pack(pady=20)
+
+        # Scroll canvas for many disks
+        disk_canvas = tk.Canvas(disks_frame, bg="#000000", highlightthickness=0)
+        scrollbar = tk.Scrollbar(disks_frame, orient="vertical", command=disk_canvas.yview)
+        scrollable_frame = tk.Frame(disk_canvas, bg="#000000")
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: disk_canvas.configure(
+                scrollregion=disk_canvas.bbox("all")
+            )
+        )
+
+        disk_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        disk_canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Function to update disk info asynchronously
+        def update_disk_info():
+            try:
+                if not content.winfo_exists():
+                    return
+                    
+                # get disk info
+                disks = self.get_disk_info()
+                
+                # Clear existing widgets
+                if loading_label.winfo_exists():
+                    loading_label.destroy()
+
+                # Display each disk
+                for disk in disks:
+                    if not scrollable_frame.winfo_exists():
+                        return
+                        
+                    frame = tk.Frame(scrollable_frame, bg="#000000")
+                    frame.pack(fill="x", pady=10, padx=5)
+                    
+                    tk.Label(frame, 
+                            text=f"{disk['Mount']}:", 
+                            bg="#000000", 
+                            fg="#00ff00",
+                            font=self.bold_font, 
+                            width=20, 
+                            anchor="w").pack(side="left")
+                    
+                    # Create canvas with fixed width for better display
+                    canvas_width = 200  # Fixed canvas width
+                    canvas = tk.Canvas(frame, height=20, width=canvas_width, bg="#121212", highlightthickness=0)
+                    canvas.pack(side="left", padx=10)
+                    
+                    # Calculate percentage bar based on canvas size
+                    percent = float(disk['Used'].replace('%', ''))
+                    bar_width = (percent / 100.0) * canvas_width
+                    canvas.create_rectangle(0, 0, bar_width, 20, fill="#006400", outline="")
+                    
+                    tk.Label(frame, 
+                            text=f"{disk['Used']} of {disk['Size']} (Free: {disk['Free']})", 
+                            bg="#000000",
+                            fg="#00ff00").pack(side="left", padx=10)
+
+                # Pack scrollbar and canvas after populating
+                disk_canvas.pack(side="left", fill="both", expand=True)
+                if len(disks) > 4:  # Only show scrollbar if needed
+                    scrollbar.pack(side="right", fill="y")
+                    
+            except Exception as e:
+                print(f"Error updating disk info: {e}")
+                if loading_label.winfo_exists():
+                    loading_label.destroy()
+                if content.winfo_exists():
+                    tk.Label(content, text=f"Error loading disk information: {str(e)}", 
+                            bg="#000000", fg="#ff0000").pack(pady=20)
+        
+        # Start update thread
+        threading.Thread(target=update_disk_info, daemon=True).start()
+        
+        # Register periodic update every 10 seconds
+        if hasattr(self, "update_queue"):
+            try:
+                self.update_queue.put(("disk_info", self.root.after(10000, self.show_disk_info)))
+            except Exception as e:
+                print(f"Error scheduling disk update: {e}")
 
     def get_disk_info(self):
         try:
@@ -1586,6 +1693,53 @@ class LinuxSystemPanel:
                 print(f"Error updating processes: {e}")
         
         update_processes()
+
+
+    
+    def show_securonis_info(self):
+        content = tk.Frame(self.main_area, bg="#000000")
+        content.pack(fill="both", expand=True, padx=25, pady=25)
+        
+        tk.Label(content, 
+                text="SECURONIS INFORMATION", 
+                font=self.title_font,
+                bg="#000000",
+                fg="#00ff00").pack(anchor="w", pady=(0, 20))
+        
+        info_frame = tk.Frame(content, bg="#000000", padx=20, pady=20)
+        info_frame.pack(fill="both", expand=True)
+        
+        securonis_info = {
+            "System": "Securonis GNU/Linux",
+            "Version": "3.0",
+            "Release": "Rolling",
+            "Based On": "Debian Trixie",
+            "Codename": "Near2Shell",
+            "Version Stage": "Stable",
+            "Seconionis Version": "1.5",
+            "Securonis Web Site": "securonis.github.io",
+            "Developer": "root0emir",
+            "Developer Mail": "root0emir@protonmail.com"
+        }
+        
+        # Display the information in a clean format
+        for key, value in securonis_info.items():
+            row = tk.Frame(info_frame, bg="#000000")
+            row.pack(fill="x", pady=8)
+            
+            tk.Label(row, 
+                    text=f"{key}:", 
+                    font=self.bold_font,
+                    bg="#000000", 
+                    fg="#00ff00",
+                    width=20,
+                    anchor="w").pack(side="left")
+                    
+            tk.Label(row, 
+                    text=value, 
+                    bg="#000000", 
+                    fg="#00ff00",
+                    anchor="w").pack(side="left", padx=10)
 
 if __name__ == "__main__":
     root = tk.Tk()
