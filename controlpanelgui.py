@@ -54,7 +54,7 @@ class LinuxSystemPanel:
         
         # Logo
         try:
-            logo_image = Image.open("/usr/share/icons/securonis/newlogopng.png")
+            logo_image = Image.open("/usr/share/icons/securonis/logo3.png")
             logo_image = logo_image.resize((150, 150), Image.Resampling.LANCZOS)
             self.logo_photo = ImageTk.PhotoImage(logo_image)
             logo_label = tk.Label(self.sidebar, 
@@ -796,10 +796,7 @@ class LinuxSystemPanel:
                 "Public IP": self.get_public_ip(),
                 
                 # System Sec  
-                "AppArmor": self.check_apparmor(),
-                "Dnscrypt-Proxy": self.check_dnscrypt(),
-                "Dnscrypt-Proxy Service": self.check_dnscrypt_proxy(),
-                "I2P Status": self.check_i2p()
+                "AppArmor": self.check_apparmor()
             }
                 
                 if loading_label.winfo_exists():
@@ -1180,7 +1177,6 @@ class LinuxSystemPanel:
                 bg="#000000",
                 fg="#00ff00").pack(anchor="w", pady=(0, 20))
         
-        # Log dosyalarını kontrol et
         log_files = {
             "System Log": "/var/log/syslog",
             "Authentication Log": "/var/log/auth.log",
@@ -1365,71 +1361,6 @@ class LinuxSystemPanel:
             elif "inactive" in apparmor_status or "failed" in apparmor_status:
                 return "Inactive"
             return "Unknown"
-        except:
-            return "Not Found"
-
-    def check_encryption(self):
-        try:
-            # LUKS kontrolü
-            luks_status = subprocess.check_output(['lsblk', '-f'], stderr=subprocess.PIPE, timeout=1).decode()
-            if "crypto_LUKS" in luks_status:
-                return "Enabled"
-            return "Not Found"
-        except:
-            return "Not Found"
-
-    def check_dnscrypt(self):
-        try:
-            # First change directory to /etc/dnscrypt-proxy
-            # Then try to resolve a domain using dnscrypt-proxy
-            commands = [
-                'cd /etc/dnscrypt-proxy',
-                'dnscrypt-proxy -resolve example.com'
-            ]
-            result = subprocess.run(
-                ' && '.join(commands),
-                shell=True,
-                capture_output=True,
-                timeout=3
-            )
-            if result.returncode == 0:
-                return "Active"
-            return "Inactive"
-        except FileNotFoundError:
-            return "Not Found"
-        except Exception:
-            return "Error"
-
-    def check_dnscrypt_proxy(self):
-        try:
-            service_status = subprocess.check_output(['systemctl', 'status', 'dnscrypt-proxy'], stderr=subprocess.PIPE, timeout=1).decode()
-            if "active (running)" in service_status:
-                return "Active"
-            elif "inactive" in service_status:
-                return "Inactive"
-            return "Unknown"
-        except:
-            return "Not Found"
-
-    def check_i2p(self):
-        try:
-            i2p_status = subprocess.check_output(['i2prouter', 'status'], stderr=subprocess.PIPE, timeout=2).decode()
-            if "running" in i2p_status.lower():
-                return "Active"
-            elif "not running" in i2p_status.lower():
-                return "Inactive"
-            return "Unknown"
-        except FileNotFoundError:
-            return "Not Found"
-        except Exception:
-            return "Error"
-
-    def check_secure_boot(self):
-        try:
-            secure_boot = subprocess.check_output(['mokutil', '--sb-state'], stderr=subprocess.PIPE, timeout=1).decode()
-            if "SecureBoot enabled" in secure_boot:
-                return "Enabled"
-            return "Disabled"
         except:
             return "Not Found"
 
