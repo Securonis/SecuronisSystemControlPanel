@@ -1644,7 +1644,7 @@ class LinuxSystemPanel:
             "Version": "3.0",
             "Release": "Rolling",
             "Based On": "Debian Trixie",
-            "Codename": "Bedelellis",
+            "Codename": "Darkcloux",
             "Version Stage": "Stable",
             "Seconionis Version": "1.5",
             "Securonis Web Site": "securonis.github.io",
