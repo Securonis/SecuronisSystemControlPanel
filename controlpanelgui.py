@@ -789,7 +789,6 @@ class LinuxSystemPanel:
                     
                 security_info = {
                 # sec
-                "Firewall Status": self.check_firewall(),
                 "VPN Status": self.check_vpn(),
                 "Tor Status": self.check_tor(),
                 "DNS Status": self.check_dns(),
@@ -1645,7 +1644,7 @@ class LinuxSystemPanel:
             "Version": "3.0",
             "Release": "Rolling",
             "Based On": "Debian Trixie",
-            "Codename": "Near2Shell",
+            "Codename": "Bedelellis",
             "Version Stage": "Stable",
             "Seconionis Version": "1.5",
             "Securonis Web Site": "securonis.github.io",
