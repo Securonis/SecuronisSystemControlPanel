@@ -54,7 +54,7 @@ class LinuxSystemPanel:
         
         # Logo
         try:
-            logo_image = Image.open("/usr/share/icons/securonis/logo3.png")
+            logo_image = Image.open("/usr/share/icons/securonis/newlogopng.png")
             logo_image = logo_image.resize((150, 150), Image.Resampling.LANCZOS)
             self.logo_photo = ImageTk.PhotoImage(logo_image)
             logo_label = tk.Label(self.sidebar, 
