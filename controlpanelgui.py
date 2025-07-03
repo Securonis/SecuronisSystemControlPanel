@@ -443,7 +443,7 @@ class LinuxSystemPanel:
         # Add information
         about_text = (
             "Secuonis Linux System Control Panel\n\n"
-            "Version: 1.5\n"
+            "Version: 1.6\n"
             "Developer: root0emir\n\n"
             "This control panel provides detailed system information, "
             "hardware monitoring, privacy and security status, and more.\n\n"
@@ -1198,7 +1198,6 @@ class LinuxSystemPanel:
             
             try:
                 if os.path.exists(log_path):
-                    # Son 5 satırı göster
                     with open(log_path, 'r') as f:
                         lines = f.readlines()[-5:]
                         status = "Last 5 lines available"
@@ -1641,12 +1640,12 @@ class LinuxSystemPanel:
         
         securonis_info = {
             "System": "Securonis GNU/Linux",
-            "Version": "3.0",
+            "Version": "4.0",
             "Release": "Rolling",
             "Based On": "Debian Trixie",
-            "Codename": "Darkcloux",
-            "Version Stage": "Stable",
-            "Seconionis Version": "1.5",
+            "Codename": "Kagune",
+            "Version Stage": "Beta",
+            "Seconionis Version": "2.0",
             "Securonis Web Site": "securonis.github.io",
             "Developer": "root0emir",
             "Developer Mail": "root0emir@protonmail.com"
