@@ -23,13 +23,25 @@ from PIL import Image, ImageTk
 class LinuxSystemPanel:
     def __init__(self, root):
         self.root = root
-        self.root.title("Secuonis Linux System Control Panel")
+        self.root.title("Secuonis Linux System Control Panel v1.8")
         self.root.geometry("1200x750")
         self.root.configure(bg="#000000")
         
-        # Thread pool
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        # Cache for system information
+        self._cache = {}
+        self._cache_timeout = {}
+        
+        # Thread pool with limited workers
+        self.executor = ThreadPoolExecutor(max_workers=2)
         self.update_queue = queue.Queue()
+        
+        # Update intervals (in milliseconds)
+        self.UPDATE_INTERVALS = {
+            'cpu_ram': 2000,    # CPU/RAM update every 2 seconds
+            'processes': 3000,   # Process list update every 3 seconds
+            'disk': 10000,      # Disk info update every 10 seconds
+            'network': 5000     # Network info update every 5 seconds
+        }
         
         # Font settings
         self.title_font = font.Font(family="Ubuntu", size=12, weight="bold")
@@ -42,6 +54,31 @@ class LinuxSystemPanel:
                            background="#121212",
                            foreground="#00ff00",
                            padding=5)
+        
+        # Configure scrollbar style
+        self.style.layout("Vertical.TScrollbar", 
+                         [('Vertical.Scrollbar.trough',
+                           {'children': [('Vertical.Scrollbar.thumb', 
+                                        {'expand': '1', 'sticky': 'nswe'})],
+                            'sticky': 'ns'})])
+        
+        self.style.configure("Vertical.TScrollbar",
+                           background="#006400",
+                           darkcolor="#006400",
+                           lightcolor="#006400",
+                           troughcolor="#121212",
+                           arrowcolor="#00ff00",
+                           bordercolor="#006400",
+                           relief="flat",
+                           width=10)
+        
+        self.style.map("Vertical.TScrollbar",
+                      background=[('pressed', '#008000'),
+                                ('active', '#008000')],
+                      darkcolor=[('pressed', '#008000'),
+                               ('active', '#008000')],
+                      lightcolor=[('pressed', '#008000'),
+                                ('active', '#008000')])
         
         # main grid
         self.root.grid_columnconfigure(0, weight=0, minsize=220)
@@ -87,9 +124,32 @@ class LinuxSystemPanel:
         for text, index in self.menu_items:
             self.create_menu_button(text, index)
         
-        # main info area
-        self.main_area = tk.Frame(root, bg="#000000")
-        self.main_area.grid(row=0, column=1, sticky="nswe")
+        # Create main scrollable area
+        self.main_container = tk.Frame(root, bg="#000000")
+        self.main_container.grid(row=0, column=1, sticky="nswe")
+        self.main_container.grid_rowconfigure(0, weight=1)
+        self.main_container.grid_columnconfigure(0, weight=1)
+        
+        # Create canvas and scrollbar
+        self.canvas = tk.Canvas(self.main_container, bg="#000000", highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(self.main_container, orient="vertical", command=self.canvas.yview, style="Vertical.TScrollbar")
+        
+        # Configure canvas
+        self.main_area = tk.Frame(self.canvas, bg="#000000")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        
+        # Pack scrollbar and canvas
+        self.scrollbar.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+        
+        # Create canvas window
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.main_area, anchor="nw", tags="self.main_area")
+        
+        # Configure canvas scrolling
+        self.main_area.bind("<Configure>", self.on_frame_configure)
+        self.canvas.bind("<Configure>", self.on_canvas_configure)
+        self.main_area.bind("<Enter>", self._bound_to_mousewheel)
+        self.main_area.bind("<Leave>", self._unbound_to_mousewheel)
         
         # info bar
         self.bottom_bar = tk.Frame(root, bg="#121212", height=100)
@@ -110,6 +170,50 @@ class LinuxSystemPanel:
         
         # window
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def _bound_to_mousewheel(self, event, canvas=None):
+        """Bind mousewheel when mouse enters the widget"""
+        target_canvas = canvas if canvas else self.canvas
+        if sys.platform.startswith('linux'):
+            target_canvas.bind_all("<Button-4>", lambda e: self._on_mousewheel(e, target_canvas))
+            target_canvas.bind_all("<Button-5>", lambda e: self._on_mousewheel(e, target_canvas))
+        else:
+            target_canvas.bind_all("<MouseWheel>", lambda e: self._on_mousewheel(e, target_canvas))
+
+    def _unbound_to_mousewheel(self, event, canvas=None):
+        """Unbind mousewheel when mouse leaves the widget"""
+        target_canvas = canvas if canvas else self.canvas
+        if sys.platform.startswith('linux'):
+            target_canvas.unbind_all("<Button-4>")
+            target_canvas.unbind_all("<Button-5>")
+        else:
+            target_canvas.unbind_all("<MouseWheel>")
+
+    def _on_mousewheel(self, event, canvas):
+        """Handle mouse wheel scrolling for any canvas"""
+        if hasattr(event, 'num'):  # Linux
+            if event.num == 5:  # scroll down
+                canvas.yview_scroll(1, "units")
+            elif event.num == 4:  # scroll up
+                canvas.yview_scroll(-1, "units")
+        elif hasattr(event, 'delta'):  # Windows
+            if event.delta < 0:  # scroll down
+                canvas.yview_scroll(1, "units")
+            else:  # scroll up
+                canvas.yview_scroll(-1, "units")
+
+    def on_frame_configure(self, event=None):
+        """Reset the scroll region to encompass the inner frame"""
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        # Ensure the frame width matches the canvas width
+        self.canvas.itemconfig(self.canvas_window, width=self.canvas.winfo_width())
+
+    def on_canvas_configure(self, event):
+        """When the canvas is resized, resize the inner frame to match"""
+        width = event.width
+        self.canvas.itemconfig(self.canvas_window, width=width)
+        # Update scroll region after canvas resize
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
     def create_usage_graphs(self):
         # CPU Graph
@@ -152,29 +256,36 @@ class LinuxSystemPanel:
 
     def update_usage_graphs(self):
         try:
-            # CPU usage
-            cpu_percent = psutil.cpu_percent(interval=0.5)
-            if hasattr(self, 'cpu_canvas') and self.cpu_canvas.winfo_exists():
-                self.cpu_canvas.delete("all")
-                width = self.cpu_canvas.winfo_width()
-                if width > 1:
-                    self.cpu_canvas.create_rectangle(0, 0, (cpu_percent/100)*width, 30, fill="#006400", outline="")
-                    self.cpu_label.config(text=f"{cpu_percent:.1f}%")
-            
-            # RAM usage
+            if not hasattr(self, 'cpu_canvas') or not self.cpu_canvas.winfo_exists():
+                return
+
+            # Get CPU and RAM usage together to reduce system calls
+            cpu_percent = psutil.cpu_percent(interval=None)  # Non-blocking call
             mem = psutil.virtual_memory()
-            if hasattr(self, 'ram_canvas') and self.ram_canvas.winfo_exists():
+
+            # Update CPU graph
+            width = self.cpu_canvas.winfo_width()
+            if width > 1:
+                self.cpu_canvas.delete("all")
+                self.cpu_canvas.create_rectangle(0, 0, (cpu_percent/100)*width, 30, fill="#006400", outline="")
+                self.cpu_label.config(text=f"{cpu_percent:.1f}%")
+
+            # Update RAM graph
+            width = self.ram_canvas.winfo_width()
+            if width > 1:
                 self.ram_canvas.delete("all")
-                width = self.ram_canvas.winfo_width()
-                if width > 1:
-                    self.ram_canvas.create_rectangle(0, 0, (mem.percent/100)*width, 30, fill="#006400", outline="")
-                    self.ram_label.config(text=f"{mem.percent:.1f}%")
-            
-            self.root.after(1000, self.update_usage_graphs)
+                self.ram_canvas.create_rectangle(0, 0, (mem.percent/100)*width, 30, fill="#006400", outline="")
+                self.ram_label.config(text=f"{mem.percent:.1f}%")
+
+            self.root.after(self.UPDATE_INTERVALS['cpu_ram'], self.update_usage_graphs)
         except Exception as e:
             print(f"Error updating graphs: {e}")
 
     def show_system_info(self):
+        # Clear existing content
+        for widget in self.main_area.winfo_children():
+            widget.destroy()
+            
         content = tk.Frame(self.main_area, bg="#000000")
         content.pack(fill="both", expand=True, padx=25, pady=25)
         
@@ -429,21 +540,18 @@ class LinuxSystemPanel:
         for widget in self.main_area.winfo_children():
             widget.destroy()
 
-        # Create a new content frame
         content = tk.Frame(self.main_area, bg="#000000")
         content.pack(fill="both", expand=True, padx=25, pady=25)
 
-        # Add title
         tk.Label(content, 
                  text="ABOUT THIS PANEL", 
                  font=self.title_font,
                  bg="#000000",
                  fg="#00ff00").pack(anchor="w", pady=(0, 20))
 
-        # Add information
         about_text = (
             "Secuonis Linux System Control Panel\n\n"
-            "Version: 1.6\n"
+            "Version: 1.8\n"
             "Developer: root0emir\n\n"
             "This control panel provides detailed system information, "
             "hardware monitoring, privacy and security status, and more.\n\n"
@@ -1372,46 +1480,57 @@ class LinuxSystemPanel:
                 bg="#000000",
                 fg="#00ff00").pack(anchor="w", pady=(0, 20))
         
-        # Frame to hold disk frames
-        disks_frame = tk.Frame(content, bg="#000000")
-        disks_frame.pack(fill="both", expand=True)
+        # Create container frame
+        container = tk.Frame(content, bg="#000000")
+        container.pack(fill="both", expand=True)
         
-        loading_label = tk.Label(content, text="Loading disk information...", bg="#000000", fg="#00ff00")
-        loading_label.pack(pady=20)
-
-        # Scroll canvas for many disks
-        disk_canvas = tk.Canvas(disks_frame, bg="#000000", highlightthickness=0)
-        scrollbar = tk.Scrollbar(disks_frame, orient="vertical", command=disk_canvas.yview)
-        scrollable_frame = tk.Frame(disk_canvas, bg="#000000")
-
+        # Create canvas and scrollbar
+        canvas = tk.Canvas(container, bg="#000000", highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", 
+                                command=canvas.yview, 
+                                style="Vertical.TScrollbar")
+        
+        # Create frame for disk info
+        scrollable_frame = tk.Frame(canvas, bg="#000000")
+        
+        # Configure scrolling
         scrollable_frame.bind(
             "<Configure>",
-            lambda e: disk_canvas.configure(
-                scrollregion=disk_canvas.bbox("all")
-            )
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
-
-        disk_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        disk_canvas.configure(yscrollcommand=scrollbar.set)
-
-        # Function to update disk info asynchronously
+        
+        # Create window in canvas
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Configure mouse wheel scrolling
+        scrollable_frame.bind("<Enter>", lambda e: self._bound_to_mousewheel(e, canvas))
+        scrollable_frame.bind("<Leave>", lambda e: self._unbound_to_mousewheel(e, canvas))
+        
+        # Loading label
+        loading_label = tk.Label(scrollable_frame, 
+                               text="Loading disk information...", 
+                               bg="#000000", 
+                               fg="#00ff00")
+        loading_label.pack(pady=20)
+        
         def update_disk_info():
             try:
-                if not content.winfo_exists():
+                if not scrollable_frame.winfo_exists():
                     return
-                    
-                # get disk info
-                disks = self.get_disk_info()
                 
-                # Clear existing widgets
+                # Get disk info using cache
+                disks = self.get_cached_data('disk_info', self.get_disk_info, timeout=10)
+                
                 if loading_label.winfo_exists():
                     loading_label.destroy()
-
-                # Display each disk
+                
+                # Clear existing disk frames
+                for widget in scrollable_frame.winfo_children():
+                    widget.destroy()
+                
+                # Create frames for each disk
                 for disk in disks:
-                    if not scrollable_frame.winfo_exists():
-                        return
-                        
                     frame = tk.Frame(scrollable_frame, bg="#000000")
                     frame.pack(fill="x", pady=10, padx=5)
                     
@@ -1423,43 +1542,40 @@ class LinuxSystemPanel:
                             width=20, 
                             anchor="w").pack(side="left")
                     
-                    # Create canvas with fixed width for better display
-                    canvas_width = 200  # Fixed canvas width
-                    canvas = tk.Canvas(frame, height=20, width=canvas_width, bg="#121212", highlightthickness=0)
-                    canvas.pack(side="left", padx=10)
+                    canvas_width = 200
+                    disk_canvas = tk.Canvas(frame, height=20, width=canvas_width, 
+                                         bg="#121212", highlightthickness=0)
+                    disk_canvas.pack(side="left", padx=10)
                     
-                    # Calculate percentage bar based on canvas size
                     percent = float(disk['Used'].replace('%', ''))
                     bar_width = (percent / 100.0) * canvas_width
-                    canvas.create_rectangle(0, 0, bar_width, 20, fill="#006400", outline="")
+                    disk_canvas.create_rectangle(0, 0, bar_width, 20, fill="#006400", outline="")
                     
                     tk.Label(frame, 
                             text=f"{disk['Used']} of {disk['Size']} (Free: {disk['Free']})", 
                             bg="#000000",
                             fg="#00ff00").pack(side="left", padx=10)
-
-                # Pack scrollbar and canvas after populating
-                disk_canvas.pack(side="left", fill="both", expand=True)
-                if len(disks) > 4:  # Only show scrollbar if needed
+                
+                # Pack canvas and scrollbar
+                canvas.pack(side="left", fill="both", expand=True)
+                if len(disks) > 4:
                     scrollbar.pack(side="right", fill="y")
-                    
+                
             except Exception as e:
                 print(f"Error updating disk info: {e}")
                 if loading_label.winfo_exists():
                     loading_label.destroy()
-                if content.winfo_exists():
-                    tk.Label(content, text=f"Error loading disk information: {str(e)}", 
-                            bg="#000000", fg="#ff0000").pack(pady=20)
+                if scrollable_frame.winfo_exists():
+                    tk.Label(scrollable_frame, 
+                            text=f"Error loading disk information: {str(e)}", 
+                            bg="#000000", 
+                            fg="#ff0000").pack(pady=20)
         
-        # Start update thread
-        threading.Thread(target=update_disk_info, daemon=True).start()
+        # Initial update
+        update_disk_info()
         
-        # Register periodic update every 10 seconds
-        if hasattr(self, "update_queue"):
-            try:
-                self.update_queue.put(("disk_info", self.root.after(10000, self.show_disk_info)))
-            except Exception as e:
-                print(f"Error scheduling disk update: {e}")
+        # Schedule periodic updates
+        self.root.after(self.UPDATE_INTERVALS['disk'], update_disk_info)
 
     def get_disk_info(self):
         try:
@@ -1512,19 +1628,28 @@ class LinuxSystemPanel:
                 bg="#000000",
                 fg="#00ff00").pack(anchor="w", pady=(0, 20))
         
-        # CPU procces 
-        tk.Label(content,
-                text="By CPU Usage:",
-                bg="#000000",
-                fg="#00ff00",
-                font=self.bold_font).pack(anchor="w", pady=(10, 5))
+        # Create scrollable frame for processes
+        process_container = tk.Frame(content, bg="#000000")
+        process_container.pack(fill="both", expand=True)
         
-        # Proccesses 
-        processes_frame = tk.Frame(content, bg="#000000")
-        processes_frame.pack(fill="x", pady=5)
+        process_canvas = tk.Canvas(process_container, bg="#000000", highlightthickness=0)
+        process_scrollbar = ttk.Scrollbar(process_container, orient="vertical", 
+                                        command=process_canvas.yview, 
+                                        style="Vertical.TScrollbar")
+        scrollable_frame = tk.Frame(process_canvas, bg="#000000")
         
-        # headres
-        headers_frame = tk.Frame(processes_frame, bg="#000000")
+        scrollable_frame.bind("<Configure>", 
+            lambda e: process_canvas.configure(scrollregion=process_canvas.bbox("all")))
+        
+        process_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        process_canvas.configure(yscrollcommand=process_scrollbar.set)
+        
+        # Configure mouse wheel scrolling
+        scrollable_frame.bind("<Enter>", lambda e: self._bound_to_mousewheel(e, process_canvas))
+        scrollable_frame.bind("<Leave>", lambda e: self._unbound_to_mousewheel(e, process_canvas))
+        
+        # Headers frame
+        headers_frame = tk.Frame(scrollable_frame, bg="#000000")
         headers_frame.pack(fill="x", pady=(0, 5))
         
         tk.Label(headers_frame,
@@ -1556,75 +1681,73 @@ class LinuxSystemPanel:
                 font=self.bold_font,
                 width=10).pack(side="left", padx=10)
         
-        # procces updating
         def update_processes():
             try:
-                if not content.winfo_exists():
+                if not scrollable_frame.winfo_exists():
                     return
-                    
-                # procces cleaning 
-                for widget in processes_frame.winfo_children():
-                    if widget != headers_frame and widget.winfo_exists():
+
+                # Clear existing process frames except headers
+                for widget in scrollable_frame.winfo_children():
+                    if widget != headers_frame:
                         widget.destroy()
-                
-                # top 5 cpu 
+
+                # Get process info more efficiently
                 processes = []
                 for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'status']):
                     try:
-                        processes.append(proc.info)
+                        info = proc.info
+                        if info['cpu_percent'] > 0.1:  # Only show processes using CPU
+                            processes.append(info)
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue
-                
-                # ranking cpu usage
+
+                # Sort and limit to top 5 CPU using processes
                 processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
                 top_processes = processes[:5]
-                
-                # show procces
+
                 for proc in top_processes:
-                    if not content.winfo_exists():
+                    if not scrollable_frame.winfo_exists():
                         return
-                        
-                    frame = tk.Frame(processes_frame, bg="#000000")
+
+                    frame = tk.Frame(scrollable_frame, bg="#000000")
                     frame.pack(fill="x", pady=2)
-                    
-                    # procces name
-                    tk.Label(frame,
-                            text=proc['name'],
-                            bg="#000000",
-                            fg="#00ff00",
-                            width=40,
-                            anchor="w").pack(side="left")
-                    
-                    # CPU usage
-                    tk.Label(frame,
-                            text=f"{proc['cpu_percent']:.1f}%",
-                            bg="#000000",
-                            fg="#00ff00",
-                            width=10).pack(side="left", padx=10)
-                    
-                    # memory usage
-                    tk.Label(frame,
-                            text=f"{proc['memory_percent']:.1f}%",
-                            bg="#000000",
-                            fg="#00ff00",
-                            width=10).pack(side="left", padx=10)
-                    
-                    # Status
-                    tk.Label(frame,
-                            text=proc['status'],
-                            bg="#000000",
-                            fg="#00ff00",
-                            width=10).pack(side="left", padx=10)
-                
-                # update after 1 sec
-                self.root.after(1000, update_processes)
+
+                    # Create all labels at once
+                    labels = [
+                        (proc['name'], 40, "w"),
+                        (f"{proc['cpu_percent']:.1f}%", 10, "center"),
+                        (f"{proc['memory_percent']:.1f}%", 10, "center"),
+                        (proc['status'], 10, "center")
+                    ]
+
+                    for text, width, anchor in labels:
+                        tk.Label(frame,
+                                text=text,
+                                bg="#000000",
+                                fg="#00ff00",
+                                width=width,
+                                anchor=anchor).pack(side="left", padx=10)
+
+                # Pack scrollbar and canvas
+                process_canvas.pack(side="left", fill="both", expand=True)
+                process_scrollbar.pack(side="right", fill="y")
+
+                # Update after interval
+                self.root.after(self.UPDATE_INTERVALS['processes'], update_processes)
+
             except Exception as e:
                 print(f"Error updating processes: {e}")
-        
+
         update_processes()
 
+    def get_cached_data(self, key, fetch_func, timeout=5):
+        """Get cached data or fetch new data if cache expired"""
+        current_time = time.time()
+        if key not in self._cache or current_time - self._cache_timeout.get(key, 0) > timeout:
+            self._cache[key] = fetch_func()
+            self._cache_timeout[key] = current_time
+        return self._cache[key]
 
-    
     def show_securonis_info(self):
         content = tk.Frame(self.main_area, bg="#000000")
         content.pack(fill="both", expand=True, padx=25, pady=25)
